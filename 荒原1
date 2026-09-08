@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>废土余烬 · 六章RPG</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+background:#121212;color:#f0e2d0;
+max-width:480px;margin:0 auto;min-height:100vh;
+padding:10px 12px;padding-bottom:calc(60px + env(safe-area-inset-bottom));
+background-image:repeating-linear-gradient(0deg,rgba(255,110,0,0.04) 0px,rgba(255,110,0,0.04) 1px,transparent 1px,transparent 3px);
+}
+h1{color:#ff8822;font-size:22px;margin:12px 0}
+.scene-box{background:#1e1c1a;border:1px solid #44382e;border-radius:10px;padding:14px;margin:12px 0;line-height:1.65}
+.opt-btn{
+display:block;width:100%;margin:8px 0;padding:12px 10px;
+background:#2c2824;color:#ffddb8;border:1px solid #634f3c;
+border-radius:8px;font-size:15px;min-height:48px;text-align:left;
+}
+.opt-btn:active{background:#443a30}
+.bottom-tab{
+position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;
+display:flex;background:#1b1917;border-top:1px solid #504234;
+padding-bottom:env(safe-area-inset-bottom);
+}
+.tab-btn{flex:1;text-align:center;padding:12px 4px;background:#24211e;color:#e2c8a8;border:none;font-size:14px;min-height:48px}
+.tab-btn.active{background:#383028;color:#ff9933}
+.bar-wrap{margin:6px 0}
+.bar-label{font-size:13px}
+.bar-bg{height:12px;background:#2a2622;border-radius:6px;overflow:hidden}
+.bar-fill{height:100%;border-radius:6px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:12px;z-index:100}
+.modal-inner{width:100%;max-width:440px;background:#1e1c1a;border:1px solid #705c48;border-radius:10px;padding:16px;max-height:85vh;overflow-y:auto}
+.item-row{padding:10px;border:1px solid #44382e;border-radius:7px;margin:6px 0}
+.item-click{cursor:pointer}
+.danger{color:#ff6b6b}
+.warn{color:#ffbc52}
+.good{color:#7cd986}
+.close-btn{margin-top:12px;width:100%;padding:10px;background:#332d27;color:#fff;border-radius:8px;border:none}
+.log-text{font-size:14px;line-height:1.6}
+.hidden{display:none !important}
+.top-quick{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.quick-tag{font-size:12px;padding:3px 7px;border-radius:4px;background:#2c2824}
+.back-btn{margin-top:10px;padding:9px;background:#2d2925;border:1px solid #55483a;color:#ffddb8;border-radius:7px;width:100%}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="start-screen">
+<h1>废土余烬</h1>
+<div class="scene-box">
+核弹浩劫过后，文明崩塌。辐射、强盗、变异生物横行废土。你是一名幸存者，在锈水镇开启生存冒险。<br><br>
+包含完整六章剧情，多重分支永久后果，战斗、伙伴、避难所建设、好感约会系统。
+</div>
+<button class="opt-btn" onclick="gameStart()">▶ 开始冒险</button>
+</div>
+
+<div id="game-screen" class="hidden">
+<div class="top-quick">
+<span class="quick-tag">生命:<span id="q-hp">100</span></span>
+<span class="quick-tag">饱食:<span id="q-food">100</span></span>
+<span class="quick-tag">口渴:<span id="q-water">100</span></span>
+<span class="quick-tag">辐射:<span id="q-rad">0</span></span>
+<span class="quick-tag">瓶盖:<span id="q-cap">50</span></span>
+<span class="quick-tag">章节:<span id="q-chap">第一章</span></span>
+</div>
+
+<div id="main-scene" class="scene-box"></div>
+<div id="option-area"></div>
+
+<div id="modal-layer" class="modal hidden">
+<div class="modal-inner">
+<div id="modal-body"></div>
+<button class="close-btn" onclick="closeModal()">关闭</button>
+</div>
+</div>
+</div>
+
+<div class="bottom-tab" id="tab-bar">
+<button class="tab-btn active" data-tab="story" onclick="switchTab('story')">📖剧情</button>
+<button class="tab-btn" data-tab="stat" onclick="openStatTab()">📊状态</button>
+<button class="tab-btn" data-tab="bag" onclick="openBagTab()">🎒背包</button>
+<button class="tab-btn" data-tab="save" onclick="doSave()">💾保存</button>
+</div>
+</div>
+
+<script>
+// 游戏全局状态
+const GS={
+chap:1,
+hp:100,maxHp:100,
+food:100,water:100,rad:0,
+caps:50,
+survival:5,combat:5,sneak:4,persuade:4,deceive:4,
+borrowedMoney:false,borrowAmount:80,
+ryanDead:false,ryanJoin:false,ryanFavor:0,
+permInjury:"",
+survivors:[],
+shelter:{built:false,material:0,house:0,wall:0,farm:0,med:0},
+inventory:[
+{name:"医疗包",type:"consume",desc:"恢复35生命",hpAdd:35,count:1},
+{name:"压缩干粮",type:"consume",desc:"+30饱食",foodAdd:30,count:2},
+{name:"净水",type:"consume",desc:"+35口渴",waterAdd:35,count:2},
+{name:"破旧手枪",type:"weapon",atk:10,count:1}
+],
+flags:{
+ch1Done:false,ch2Done:false,ch3Done:false,ch4Done:false,ch5Done:false,ch6Done:false
+},
+curScene:"town_gate",
+dialogStack:[],//对话返回栈
+turn:0
+};
+
+//敌人模板
+const ENEMY={
+radWolf:{name:"辐射狼",hp:60,atk:14,def:3,crit:0.2},
+guard:{name:"锈水守卫",hp:70,atk:12,def:6,crit:0.12},
+raider:{name:"废土强盗",hp:80,atk:13,def:4,crit:0.18},
+cultPriest:{name:"辐射教祭司",hp:90,atk:16,def:5,crit:0.22},
+mutantGoblin:{name:"变异哥布林",hp:45,atk:11,def:2,crit:0.15},
+deathClaw:{name:"死亡之爪(巨型蜥蜴)",hp:130,atk:22,def:8,crit:0.3}
+};
+
+//本地存档
+function doSave(){
+localStorage.setItem("wasteland_save",JSON.stringify(GS));
+alert("✅游戏已保存至浏览器本地");
+}
+function loadSave(){
+let s=localStorage.getItem("wasteland_save");
+if(!s)return false;
+Object.assign(GS,JSON.parse(s));
+return true;
+}
+
+//渲染顶部快捷状态
+function renderQuick(){
+document.getElementById("q-hp").innerText=GS.hp;
+document.getElementById("q-food").innerText=GS.food;
+document.getElementById("q-water").innerText=GS.water;
+document.getElementById("q-rad").innerText=GS.rad;
+document.getElementById("q-cap").innerText=GS.caps;
+document.getElementById("q-chap").innerText=["","第一章","第二章","第三章","第四章","第五章","第六章"][GS.chap];
+}
+
+//回合消耗：饱食口渴辐射
+function nextTurn(){
+GS.turn++;
+GS.food=Math.max(0,GS.food-3);
+GS.water=Math.max(0,GS.water-4);
+if(GS.rad>0)GS.rad=Math.min(100,GS.rad+1);
+if(GS.food<=0)GS.hp-=4;
+if(GS.water<=0)GS.hp-=6;
+if(GS.rad>=60)GS.hp-=3;
+if(GS.hp<=0){
+renderSceneText("你倒在了废土之中，寒冷与辐射吞噬了你。<br><span class='danger'>【游戏结束】</span>");
+setOptionHtml("");
+return false;
+}
+renderQuick();
+return true;
+}
+
+//背包：打开，点击消耗品使用
+function openBagTab(){
+let html="<h3>🎒背包</h3>";
+for(let it of GS.inventory){
+let cls=it.type==="consume"?"item-row item-click":"item-row";
+html+=`<div class="${cls}" onclick="${it.type==='consume'?`useItem('${it.name}')`:""}">
+${it.name} ×${it.count}<br><small>${it.desc||""}</small>
+</div>`;
+}
+html+="<div class='warn'>💡点击消耗品直接使用</div>";
+showModal(html);
+}
+
+function useItem(name){
+let idx=GS.inventory.findIndex(x=>x.name===name);
+if(idx===-1)return;
+let it=GS.inventory[idx];
+if(it.count<=0)return;
+if(it.type!=="consume")return;
+if(it.hpAdd)GS.hp=Math.min(GS.maxHp,GS.hp+it.hpAdd);
+if(it.foodAdd)GS.food=Math.min(100,GS.food+it.foodAdd);
+if(it.waterAdd)GS.water=Math.min(100,GS.water+it.waterAdd);
+it.count--;
+if(it.count<=0)GS.inventory.splice(idx,1);
+renderQuick();
+openBagTab();
+}
+
+//状态面板
+function openStatTab(){
+let inj=GS.permInjury?`<div class="danger">永久损伤：${GS.permInjury}</div>`:"";
+let html=`
+<h3>📊角色状态</h3>
+${inj}
+<div class="bar-wrap"><div class="bar-label">生命 ${GS.hp}/${GS.maxHp}</div><div class="bar-bg"><div class="bar-fill" style="width:${GS.hp/GS.maxHp*100}%;background:#d64848"></div></div></div>
+<div class="bar-wrap"><div class="bar-label">饱食 ${GS.food}</div><div class="bar-bg"><div class="bar-fill" style="width:${GS.food}%;background:#d4a048"></div></div></div>
+<div class="bar-wrap"><div class="bar-label">口渴 ${GS.water}</div><div class="bar-bg"><div class="bar-fill" style="width:${GS.water}%;background:#489cd4"></div></div></div>
+<div class="bar-wrap"><div class="bar-label">辐射 ${GS.rad}</div><div class="bar-bg"><div class="bar-fill" style="width:${GS.rad}%;background:#88bb44"></div></div></div>
+<hr style="margin:12px 0;border-color:#444">
+生存:${GS.survival}｜战斗:${GS.combat}｜潜行:${GS.sneak}｜说服:${GS.persuade}｜欺骗:${GS.deceive}<br>
+<button class="opt-btn" onclick="trainSkill()">训练技能(消耗10瓶盖)</button>
+<hr style="margin:12px 0;border-color:#444">
+${GS.ryanJoin?`<div class="good">伙伴：瑞恩｜好感度 ${GS.ryanFavor}/100</div>`:""}
+${GS.survivors.length>0?"幸存者："+GS.survivors.map(x=>x.name).join("，"):"无幸存者"}
+`;
+showModal(html);
+}
+
+function trainSkill(){
+if(GS.caps<10){alert("瓶盖不足，需要10瓶盖");return;}
+GS.caps-=10;
+let list=["survival","combat","sneak","persuade","deceive"];
+let sel=list[Math.floor(Math.random()*list.length)];
+GS[sel]+=1;
+alert(`训练完成！${sel==="survival"?"生存":sel==="combat"?"战斗":sel==="sneak"?"潜行":sel==="persuade"?"说服":"欺骗"}+1`);
+renderQuick();
+openStatTab();
+}
+
+//模态弹窗
+function showModal(html){
+document.getElementById("modal-body").innerHTML=html;
+document.getElementById("modal-layer").classList.remove("hidden");
+}
+function closeModal(){
+document.getElementById("modal-layer").classList.add("hidden");
+}
+function switchTab(t){
+document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+document.querySelector(`.tab-btn[data-tab="${t}"]`).classList.add("active");
+}
+
+//对话栈：保存上一层，实现返回
+function pushDialogState(text,optList){
+GS.dialogStack.push({text,optList});
+}
+function dialogBack(){
+if(GS.dialogStack.length===0)return;
+let prev=GS.dialogStack.pop();
+renderSceneText(prev.text);
+setOptionList(prev.optList);
+}
+
+//渲染场景文本
+function renderSceneText(txt){
+document.getElementById("main-scene").innerHTML=`<div class="log-text">${txt}</div>`;
+}
+function setOptionHtml(html){
+document.getElementById("option-area").innerHTML=html;
+}
+function setOptionList(arr){
+let html=arr.map((o,i)=>`<button class="opt-btn" onclick="${o.cb}">${o.txt}</button>`).join("");
+//追加返回按钮
+if(GS.dialogStack.length>0){
+html+=`<button class="back-btn" onclick="dialogBack()">↩ 返回上一层</button>`;
+}
+setOptionHtml(html);
+}
+
+//战斗系统简易
+async function startBattle(enemyKey,onWin,onLose){
+let e={...ENEMY[enemyKey]};
+let playerHp=GS.hp;
+let log=[];
+while(true){
+let dmg=Math.max(2,GS.combat+Math.floor(Math.random()*8)-e.def);
+log.push(`你攻击${e.name}，造成${dmg}伤害`);
+e.hp-=dmg;
+if(e.hp<=0){
+log.push(`<span class="good">${e.name}被击败！</span>`);
+renderSceneText(log.join("<br>"));
+setOptionList([{txt:"继续",cb:onWin}]);
+return;
+}
+//敌人行动
+let eDmg=Math.max(1,e.atk-Math.floor(Math.random()*4));
+if(Math.random()<e.crit){eDmg=Math.floor(eDmg*1.6);log.push(`<span class="danger">${e.name}暴击！</span>`);}
+log.push(`${e.name}攻击你，受到${eDmg}伤害`);
+playerHp-=eDmg;
+GS.hp=playerHp;
+renderQuick();
+if(playerHp<=0){
+log.push(`<span class="danger">你被击倒</span>`);
+renderSceneText(log.join("<br>"));
+setOptionList([{txt:"接受结局",cb:onLose}]);
+return;
+}
+renderSceneText(log.join("<br>"));
+await sleep(1100);
+}
+}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+//===========剧情节点============
+function gameStart(){
+loadSave();
+document.getElementById("start-screen").classList.add("hidden");
+document.getElementById("game-screen").classList.remove("hidden");
+renderQuick();
+runScene(GS.curScene);
+}
+
+function runScene(sceneId){
+GS.curScene=sceneId;
+nextTurn();
+switch(sceneId){
+case "town_gate":
+renderSceneText("【第一章 · 峡谷的货物】你来到锈水镇大门，一名守卫横在面前。\n“要进镇子，交25瓶盖过路费。”");
+setOptionList([
+{txt:"支付25瓶盖",cb:"townGatePay()"},
+{txt:"尝试说服(说服检定)",cb:"townGatePersuade()"},
+{txt:"尝试欺骗(欺骗检定)",cb:"townGateLie()"},
+{txt:"暂时离开",cb:"renderSceneText('你离开了镇口。');setOptionList([{txt:'重新来到镇口',cb:'runScene(\"town_gate\")'}])"}
+]);
+break;
+case "town_inn":
+renderSceneText("锈水镇酒馆。昏暗的灯光，酒客低声交谈。商人老K坐在角落。");
+pushDialogState("锈水镇酒馆。昏暗的灯光，酒客低声交谈。商人老K坐在角落。",[
+{txt:"和老K交谈",cb:"talkOldK()"}
+]);
+setOptionList([{txt:"和老K交谈",cb:"talkOldK()"}]);
+break;
+case "death_canyon":
+renderSceneText("死亡峡谷，辐射弥漫，残垣遍地。空气中弥漫危险辐射。");
+GS.rad+=12;renderQuick();
+setOptionList([
+{txt:"继续深入搜寻金属箱",cb:"canyonSearch()"},
+{txt:"撤退返回锈水镇",cb:"runScene('town_inn')"}
+]);
+break;
+case "ch2_ryan_event":
+GS.chap=2;renderQuick();
+if(GS.ryanDead){
+renderSceneText("【第二章】武器店已经化为焦黑废墟，瑞恩已经死去，这条支线彻底关闭。");
+setOptionList([{txt:"继续主线，前往辐射教团线索",cb:"runScene('ch3_cult_start')"}]);
+return;
+}
+renderSceneText("【第二章】你路过武器店，听见打斗惨叫！强盗正在围攻武器店女老板瑞恩。");
+setOptionList([
+{txt:"冲上去救援瑞恩（开启战斗）",cb:"battleSaveRyan()"},
+{txt:"冷眼旁观，直接离开",cb:"ryanDieRoute()"}
+]);
+break;
+case "ch3_cult_start":
+GS.chap=3;renderQuick();
+renderSceneText("【第三章 · 辐射教团的阴谋】你追踪线索来到辐射教团营地外围。祭司宣扬辐射净化的谎言。");
+setOptionList([
+{txt:"直接上前当众对质祭司【看似正义，即死结局】",cb:"cultDirectConfront()"},
+{txt:"潜行潜入搜集证据（潜行检定）",cb:"cultStealthRoute()"},
+{txt:"先暗中观察，暂时撤退",cb:"renderSceneText('你选择暂时撤退。');setOptionList([{txt:'再次回来教团营地',cb:'runScene(\"ch3_cult_start\")'}])"}
+]);
+break;
+case "ch4_oasis_road":
+GS.chap=4;renderQuick();
+renderSceneText("【第四章 · 寻找净土】传说绿洲就在风暴辐射带后方。风暴辐射极强。");
+setOptionList([
+{txt:"硬闯辐射风暴",cb:"oasisHardMarch()"},
+{txt:"提升生存属性后再尝试",cb:"openStatTab()"},
+{txt:"外出搜寻幸存者",cb:"searchSurvivor()"}
+]);
+break;
+case "ch5_build_shelter":
+GS.chap=5;renderQuick();
+renderSceneText("【第五章 · 建立避难所】找到净土，现在需要收集物资建设家园。");
+setOptionList([
+{txt:"外出搜集建筑材料",cb:"collectMaterial()"},
+{txt:"建设房屋",cb:"buildHouse()"},
+{txt:"建设防御围墙",cb:"buildWall()"},
+{txt:"建设农田与医疗站",cb:"buildFarmMed()"}
+]);
+break;
+case "ch6_wild_explore":
+GS.chap=6;renderQuick();
+renderSceneText("【第六章 · 荒野探索】避难所初步建成，荒野还有大量变异生物游荡。");
+let opts=[
+{txt:"探索荒野，遭遇变异哥布林",cb:"battleGoblin()"},
+{txt:"深入危险山谷，挑战死亡之爪",cb:"battleDeathClaw()"}
+];
+if(GS.ryanJoin){
+opts.push({txt:"找瑞恩对话，提升好感",cb:"ryanChatRoute()"});
+opts.push({txt:"邀约瑞恩约会",cb:"ryanDateCheck()"});
+}
+setOptionList(opts);
+break;
+}
+}
+
+//第一章逻辑
+function townGatePay(){
+if(GS.caps>=25){GS.caps-=25;renderQuick();runScene("town_inn");}
+else{renderSceneText("你的瓶盖不足，交不起过路费。");setOptionList([{txt:"返回",cb:"runScene('town_gate')"}]);}
+}
+function townGatePersuade(){
+if(GS.persuade>=5){renderSceneText("你说服守卫放你入城。");runScene("town_inn");}
+else{renderSceneText("说服失败，守卫不为所动。");setOptionList([{txt:"返回",cb:"runScene('town_gate')"}]);}
+}
+function townGateLie(){
+if(GS.deceive>=5){renderSceneText("你编造身份骗过守卫。");runScene("town_inn");}
+else{renderSceneText:"谎言被拆穿，守卫嗤之以鼻。";setOptionList([{txt:"返回",cb:"runScene('town_gate')"}]);}
+}
+
+function talkOldK(){
+pushDialogState("锈水镇酒馆。昏暗的灯光，酒客低声交谈。商人老K坐在角落。",[{txt:"和老K交谈",cb:"talkOldK()"}]);
+let html=`老K压低声音：“我有一笔活，死亡峡谷有个遗失金属箱，帮我拿回来给你丰厚报酬。”<br><br>
+<button class="opt-btn" onclick="acceptKQuest()">接受任务</button>
+<button class="opt-btn" onclick="borrowFromK()">尝试预支一些瓶盖</button>
+<button class="back-btn" onclick="dialogBack()">↩返回上一层</button>`;
+renderSceneText(html);
+setOptionHtml("");
+}
+function acceptKQuest(){
+renderSceneText("你接下老K任务，前往死亡峡谷寻找金属箱。");
+setOptionList([{txt:"动身前往死亡峡谷",cb:"runScene('death_canyon')"}]);
+}
+function borrowFromK(){
+if(GS.borrowedMoney){
+renderSceneText("老K摇头：“之前已经预支给你了，别再想着拿钱，你还欠我"+GS.borrowAmount+"瓶盖。”");
+setOptionList([{txt:"返回对话",cb:"talkOldK()"}]);
+return;
+}
+GS.borrowedMoney=true;
+GS.caps+=GS.borrowAmount;renderQuick();
+renderSceneText(`老K借给你${GS.borrowAmount}瓶盖，记住这笔债务。`);
+setOptionList([{txt:"返回对话",cb:"talkOldK()"}]);
+}
+function canyonSearch(){
+renderSceneText("深入峡谷，辐射狼猛然扑出！");
+startBattle("radWolf",
+`renderSceneText("击败辐射狼，你找到金属箱！返回锈水镇交付任务。");GS.caps+=120;GS.flags.ch1Done=true;renderQuick();setOptionList([{txt:"回到锈水镇酒馆",cb:"runScene('ch2_ryan_event')"}])`,
+`renderSceneText("你被辐射狼击倒。<span class='danger'>游戏结束</span>");setOptionHtml("")`
+);
+}
+
+//第二章瑞恩分支
+async function battleSaveRyan(){
+renderSceneText("你冲上前，与袭击瑞恩的强盗开战！");
+await startBattle("raider",
+`saveRyanSuccess()`,
+`renderSceneText("战斗失败，瑞恩倒在强盗手下。");ryanDieRoute()`
+);
+}
+function saveRyanSuccess(){
+GS.ryanJoin=true;
+GS.ryanFavor=25;
+GS.inventory.push({name:"瑞恩的左轮手枪",type:"weapon",atk:16,count:1});
+renderSceneText("你击退强盗。瑞恩活了下来，愿意成为你的伙伴，赠送一把威力强大左轮手枪。【瑞恩入队】");
+setOptionList([{txt:"继续主线，前往辐射教团线索",cb:"runScene('ch3_cult_start')"}]);
+}
+function ryanDieRoute(){
+GS.ryanDead=true;GS.ryanJoin=false;GS.ryanFavor=0;
+renderSceneText("瑞恩倒在血泊之中，武器店化为废墟，该人物剧情永久关闭。");
+setOptionList([{txt:"继续主线，前往辐射教团线索",cb:"runScene('ch3_cult_start')"}]);
+}
+
+//第三章辐射教团反转即死
+function cultDirectConfront(){
+renderSceneText("<span class='danger'>你当众揭穿祭司，早有准备的教团信徒一拥而上将你杀害。看似正义的选择带来死亡结局。【游戏结束】</span>");
+setOptionHtml("");
+}
+function cultStealthRoute(){
+if(GS.sneak>=6){
+renderSceneText("潜行成功，拿到教团罪证，祭司阴谋败露仓皇逃窜。第三章完成。");
+GS.flags.ch3Done=true;
+setOptionList([{txt:"启程寻找净土绿洲",cb:"runScene('ch4_oasis_road')"}]);
+}else{
+renderSceneText("潜行被发现，你被迫仓皇逃离教团营地。");
+setOptionList([{txt:"撤退",cb:"runScene('ch3_cult_start')"}]);
+}
+}
+
+//第四章：属性门槛，永久损伤
+function oasisHardMarch(){
+if(GS.survival>=8){
+renderSceneText("生存经验充足，你成功穿越辐射风暴，望见绿洲轮廓。");
+GS.flags.ch4Done=true;
+setOptionList([{txt:"抵达净土，准备建设避难所",cb:"runScene('ch5_build_shelter')"}]);
+}else{
+GS.permInjury="辐射灼伤，永久降低最大生命";
+GS.maxHp-=25;GS.hp=Math.max(10,GS.hp-30);
+renderSceneText(`生存不足8，硬闯风暴！你遭受严重辐射灼伤，${GS.permInjury}。勉强活着看到绿洲。`);
+renderQuick();
+GS.flags.ch4Done=true;
+setOptionList([{txt:"抵达净土，准备建设避难所",cb:"runScene('ch5_build_shelter')"}]);
+}
+}
+function searchSurvivor(){
+let svList=[{name:"工程师老陈"},{name:"医生小丽"}];
+let pick=svList[Math.floor(Math.random()*svList.length)];
+GS.survivors.push(pick);
+renderSceneText(`你找到了幸存者【${pick.name}】，愿意跟随你前往净土，后期建设避难所的关键人物。`);
+setOptionList([{txt:"回到净土选择",cb:"runScene('ch4_oasis_road')"}]);
+}
+
+//第五章避难所建设
+function collectMaterial(){
+GS.shelter.material+=35;
+renderSceneText(`搜集物资完成，现有建筑材料：${GS.shelter.material}`);
+setOptionList([{txt:"返回建设菜单",cb:"runScene('ch5_build_shelter')"}]);
+}
+function buildHouse(){
+if(GS.shelter.material>=25){GS.shelter.material-=25;GS.shelter.house+=1;renderSceneText("房屋建造完成！");}
+else{renderSceneText("材料不足，需要25材料。");}
+setOptionList([{txt:"返回建设菜单",cb:"runScene('ch5_build_shelter')"}]);
+}
+function buildWall(){
+if(GS.shelter.material>=30){GS.shelter.material-=30;GS.shelter.wall+=1;renderSceneText("防御围墙建造完成！");}
+else{renderSceneText("材料不足，需要30材料。");}
+setOptionList([{txt:"返回建设菜单",cb:"runScene('ch5_build_shelter')"}]);
+}
+function buildFarmMed(){
+if(GS.shelter.material>=40){GS.shelter.material-=40;GS.shelter.farm+=1;GS.shelter.med+=1;renderSceneText("农田与医疗站完工！避难所成型。第五章完成，可以外出荒野探索。");GS.flags.ch5Done=true;setOptionList([{txt:"前往荒野探索",cb:"runScene('ch6_wild_explore')"}]);
+}else{renderSceneText("材料不足，需要40材料。");setOptionList([{txt:"返回建设菜单",cb:"runScene('ch5_build_shelter')"}]);}
+}
+
+//第六章战斗+瑞恩好感约会
+async function battleGoblin(){
+renderSceneText("变异哥布林从乱石堆冲出来！");
+await startBattle("mutantGoblin",
+`renderSceneText("击败变异哥布林。");setOptionList([{txt:"回到荒野探索",cb:"runScene('ch6_wild_explore')"}])`,
+`renderSceneText("你被哥布林击倒。<span class='danger'>游戏结束</span>");setOptionHtml("")`
+);
+}
+async function battleDeathClaw(){
+renderSceneText("巨型死亡之爪！巨大蜥蜴般的变异巨兽现身，极为危险！");
+await startBattle("deathClaw",
+`renderSceneText("艰难击杀死亡之爪！第六章主线完成，第七章待设计。");GS.flags.ch6Done=true;setOptionList([{txt:"回到荒野探索",cb:"runScene('ch6_wild_explore')"}])`,
+`renderSceneText("被死亡之爪撕碎。<span class='danger'>游戏结束</span>");setOptionHtml("")`
+);
+}
+function ryanChatRoute(){
+GS.ryanFavor=Math.min(100,GS.ryanFavor+6);
+renderSceneText(`你和瑞恩闲谈废土过往，好感+6，当前好感：${GS.ryanFavor}/100`);
+setOptionList([{txt:"返回荒野探索",cb:"runScene('ch6_wild_explore')"}]);
+}
+function ryanDateCheck(){
+if(GS.ryanFavor>=45){
+GS.ryanFavor+=12;
+renderSceneText("【约会剧情】避难所宁静夜晚，你们并肩看废土残霞，关系更进一步。好感+12。");
+}else{
+renderSceneText(`瑞恩婉拒：“我们还不够熟悉。”（需要好感≥45，当前${GS.ryanFavor}）`);
+}
+setOptionList([{txt:"返回荒野探索",cb:"runScene('ch6_wild_explore')"}]);
+}
+</script>
+</body>
+</html>
