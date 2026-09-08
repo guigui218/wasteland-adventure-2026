@@ -1,0 +1,19 @@
+{
+  "name": "wasteland-adventure-2026",
+  "version": "1.0.0",
+  "description": "一个基于网页的后启示录文本冒险游戏",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "npx http-server"
+  },
+  "keywords": [
+    "game",
+    "text-adventure",
+    "post-apocalyptic",
+    "interactive-fiction",
+    "RPG"
+  ],
+  "author": "guigui218",
+  "license": "MIT"
+}
